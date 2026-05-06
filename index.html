@@ -1674,7 +1674,12 @@ body.nav-visible .screen { padding-top: 44px; }
       </div>
 
       <div style="border-top:1px solid var(--border);padding-top:1.2rem;margin-top:auto;">
-        <div style="font-size:13px;color:var(--text3);line-height:1.7;font-style:italic;">This tool does not tell you to stop using AI. It asks you to make an informed choice about what you are trading away — and whether you would have made the same choice if you had known.</div>
+        <div style="font-size:13px;color:var(--text3);line-height:1.7;font-style:italic;margin-bottom:1.2rem;">This tool does not tell you to stop using AI. It asks you to make an informed choice about what you are trading away — and whether you would have made the same choice if you had known.</div>
+        <div style="background:var(--surface2);border:1px solid rgba(167,139,250,0.2);border-radius:8px;padding:1.2rem 1.4rem;margin-bottom:0;">
+          <div style="font-size:13px;color:var(--text2);line-height:1.75;margin-bottom:1rem;">AI is consistently faster and more polished. The workforce is now integrating it across industries — and teaching AI skills in schools is rapidly becoming standard practice. Most of this is happening without a policy framework. The question this raises isn't whether AI is useful. It's whether the people absorbing its cognitive costs had a choice — and whether those costs are landing equally.</div>
+          <div style="font-size:13px;color:var(--text2);line-height:1.75;margin-bottom:1.2rem;font-style:italic;color:var(--purple);">Who is this unfair for?</div>
+          <button class="btn-primary" style="background:var(--purple);color:white;font-size:13px;" onclick="startFairnessTest()">take the fairness test →</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2472,9 +2477,10 @@ function showMetricPopup(label) {
     },
   };
 
-  const charId = ftCharacter?.id;
+  const onFairnessScreen = document.getElementById('screen-fairness')?.classList.contains('active');
+  const charId = onFairnessScreen ? ftCharacter?.id : undefined;
   const charContext = (charId !== undefined && FT_METRIC_CHAR_CONTEXT[charId]) ? FT_METRIC_CHAR_CONTEXT[charId][label] || '' : '';
-  const taskCtx = charContext || exp.taskContext?.[taskName] || '';
+  const taskCtx = charContext || (!onFairnessScreen ? (exp.taskContext?.[taskName] || '') : '');
 
   document.getElementById('mp-title').textContent = exp.title || label;
   document.getElementById('mp-body').textContent = exp.body;
@@ -3323,19 +3329,19 @@ Respond ONLY with valid JSON, no markdown:
     const response = await fetch('/api/score', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 300,
-        messages: [{ role: 'user', content: prompt }]
-      })
+      body: JSON.stringify({ prompt })
     });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errText.slice(0, 100)}`);
+    }
     const data = await response.json();
     if (data.error) throw new Error(data.error.message);
     const text = data.content[0].text.trim();
     const clean = text.replace(/```json|```/g, '').trim();
     return { ...JSON.parse(clean), metric };
   } catch (e) {
-    return { yourScore: Math.min(Math.round(45 + (userText.split(' ').length / 80) * 30), 74), reasoning: 'Could not score automatically.', metric };
+    return { yourScore: null, reasoning: 'Scoring unavailable: ' + e.message, metric };
   }
 }
 
@@ -3690,7 +3696,7 @@ function showResults(idx, userText, profPct) {
   const analysisMetric = isSummarising ? 'relevance' : isBrainstorming ? 'creativity' : isExplaining ? 'understanding' : 'professionalism';
   if (analysisLabel) analysisLabel.textContent = `AI ${analysisMetric} analysis`;
 
-  const hasTextToScore = userText.length > 10 && !userText.startsWith('[delegated');
+  const hasTextToScore = userText.length > 10 && !userText.startsWith('[delegated') && !notGenuine;
   if (hasTextToScore) {
     if (profReasonEl) profReasonEl.innerHTML = `<span style="color:var(--text3);font-family:'DM Mono',monospace;font-size:11px;">analysing your text...</span>`;
     scoreProfessionalism(userText, t.aiOutput, t.name, isBrainstorming ? t.task : isExplaining ? t.task : t.context).then(result => {
@@ -3698,6 +3704,13 @@ function showResults(idx, userText, profPct) {
       const _isBrainstorming = isBrainstorming;
       const _isExplaining = isExplaining;
       const realProf = result.yourScore;
+
+      if (realProf === null) {
+        // scoring failed — show error, keep default bars
+        if (profReasonEl) profReasonEl.innerHTML = `<span style="color:var(--text3);font-size:13px;">${result.reasoning}</span>`;
+        return;
+      }
+
       const partialNote = isAiOnly ? `<div style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:6px;">scored on what you wrote before switching to AI</div>` : '';
       if (profReasonEl) profReasonEl.innerHTML = `${partialNote}<div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--amber);margin-bottom:4px;">your score: ${realProf}% &nbsp;·&nbsp; AI: ${t.profAi}%</div><div style="font-size:13px;color:var(--text2);line-height:1.7;">${result.reasoning}</div>`;
       document.getElementById('rr-you-prof').textContent = realProf + '%';
@@ -3717,6 +3730,8 @@ function showResults(idx, userText, profPct) {
     }).catch(err => {
       if (profReasonEl) profReasonEl.innerHTML = `<span style="color:var(--text3);font-size:13px;">Analysis unavailable — check your connection.</span>`;
     });
+  } else if (notGenuine) {
+    if (profReasonEl) profReasonEl.innerHTML = `<span style="color:var(--text3);font-size:13px;">Text not recognised as a genuine attempt — no analysis available.</span>`;
   } else if (isAiOnly) {
     if (profReasonEl) profReasonEl.innerHTML = `<span style="color:var(--text3);font-size:13px;">You delegated without writing anything — no text to analyse. AI scored ${t.profAi}%.</span>`;
   } else {
