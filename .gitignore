@@ -1,0 +1,4 @@
+ANTHROPIC_API_KEY
+.env
+.env.local
+node_modules/
