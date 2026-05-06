@@ -5,7 +5,7 @@
       "maxDuration": 30
     }
   },
-  "routes": [
-    { "src": "/api/score", "dest": "/api/score.js" }
-  ]
+  "buildCommand": "",
+  "outputDirectory": ".",
+  "framework": null
 }
